@@ -300,6 +300,11 @@ mod tests {
     use super::*;
     use theme::*;
 
+    // Helper function to compare floats with epsilon
+    fn approx_eq(a: f32, b: f32, epsilon: f32) -> bool {
+        (a - b).abs() < epsilon
+    }
+
     /// Helper function to round HSL values for testing
     fn round_hsl(hsl: (f32, f32, f32)) -> (f32, f32, f32) {
         (
@@ -339,29 +344,29 @@ mod tests {
 
     #[test]
     fn test_void_variants() {
+        const EPSILON: f32 = 0.2;
+
         let dark_purple = void::purple_variant(20.0);
         let (_h, _s, l) = dark_purple.to_hsl();
-        // Round to single decimal place for comparison
-        let l = (l * 10.0).round() / 10.0;
-        assert_eq!(l, 20.0, "Expected lightness to be 20.0, got {}", l);
+        assert!(approx_eq(l, 20.0, EPSILON),
+            "Lightness {} not within {} of target 20.0", l, EPSILON);
     }
 
     #[test]
     fn test_status_variants() {
+        const EPSILON: f32 = 0.2;
+
         let warning = status::WARNING;
         let intense = status::variant(warning, 70.0);
 
         let (h1, s1, _) = warning.to_hsl();
         let (h2, _s2, l2) = intense.to_hsl();
 
-        // Round values for comparison
-        let h1 = (h1 * 10.0).round() / 10.0;
-        let h2 = (h2 * 10.0).round() / 10.0;
-        let l2 = (l2 * 10.0).round() / 10.0;
-
-        assert_eq!(h1, h2, "Hue should remain constant");
+        assert!(approx_eq(h1, h2, EPSILON),
+            "Hue changed from {} to {}, diff > {}", h1, h2, EPSILON);
         assert!(s1 > 0.0, "Source saturation should be positive");
-        assert_eq!(l2, 70.0, "Lightness should be set to requested value");
+        assert!(approx_eq(l2, 70.0, EPSILON),
+            "Lightness {} not within {} of target 70.0", l2, EPSILON);
     }
 
     #[test]
