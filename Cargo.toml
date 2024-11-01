@@ -8,14 +8,14 @@ license = "MPL-2.0"
 repository = "https://github.com/v01dlabs/oxitty"
 
 [dependencies]
-crossterm = "0.28.1"
-ratatui = "0.29.0"
-miette = { version = "7.2", features = ["fancy"] }
-smol = "2.0.2"
 async-channel = "2.1"
-futures-lite = "2.1"
-owo-colors = "4.0"
 atty = "0.2.14"
+crossterm = "0.28.1"
+futures-lite = "2.1"
+miette = { version = "7.2", features = ["fancy"] }
+owo-colors = "4.0"
+ratatui = "0.29.0"
+smol = "2.0.2"
 
 [dev-dependencies]
 pretty_assertions = "1.4"

@@ -1,7 +1,134 @@
-//! Core TUI implementation
+//! Terminal User Interface (TUI) Management Module
 //!
-//! This module provides the TUI functionality, handling terminal setup,
-//! rendering, cleanup, and state management in an atomic, non-blocking way.
+//! Provides comprehensive terminal interface management functionality for building
+//! interactive terminal applications with atomic state management and theme-based styling.
+//!
+//! # Features
+//!
+//! - Atomic state management with thread-safe snapshots
+//! - Theme-based styling system with consistent color schemes
+//! - Raw mode and alternate screen management
+//! - Mouse capture support
+//! - Non-blocking rendering system
+//! - Error handling with detailed context
+//!
+//! # Architecture
+//!
+//! The TUI system is built around three main components:
+//! - Terminal management (raw mode, alternate screen, cleanup)
+//! - State management (atomic states and snapshots)
+//! - Rendering system (frame drawing and theme application)
+//!
+//! # Example
+//!
+//! ```rust
+//! use std::sync::atomic::{AtomicBool, Ordering};
+//! use oxitty::{Tui, AtomicState, StateSnapshot, OxittyResult};
+//!
+//! // First, set up a mock terminal environment
+//! std::env::set_var("TERM", "dumb");
+//!
+//! // Define example state
+//! #[derive(Debug)]
+//! struct AppState {
+//!     running: AtomicBool,
+//! }
+//!
+//! #[derive(Debug, Clone)]
+//! struct AppSnapshot {
+//!     running: bool,
+//! }
+//!
+//! impl StateSnapshot for AppSnapshot {
+//!     fn should_quit(&self) -> bool {
+//!         !self.running
+//!     }
+//! }
+//!
+//! impl AtomicState for AppState {
+//!     type Snapshot = AppSnapshot;
+//!
+//!     fn snapshot(&self) -> Self::Snapshot {
+//!         AppSnapshot {
+//!             running: self.running.load(Ordering::Acquire),
+//!         }
+//!     }
+//!
+//!     fn quit(&self) {
+//!         self.running.store(false, Ordering::Release);
+//!     }
+//!
+//!     fn is_running(&self) -> bool {
+//!         self.running.load(Ordering::Acquire)
+//!     }
+//! }
+//!
+//! // Function showing proper error handling
+//! fn example() -> OxittyResult<()> {
+//!     // Create state
+//!     let app_state = AppState {
+//!         running: AtomicBool::new(true),
+//!     };
+//!
+//!     // Attempt to create TUI (will fail in test environment, which is expected)
+//!     let result = Tui::new(app_state);
+//!     assert!(result.is_err(), "TUI creation should fail in test environment");
+//!
+//!     // Verify we get the expected error type
+//!     if let Err(e) = result {
+//!         let error_msg = e.to_string().to_lowercase();
+//!         assert!(
+//!             error_msg.contains("terminal") || error_msg.contains("tty"),
+//!             "Expected terminal-related error"
+//!         );
+//!     }
+//!
+//!     Ok(())
+//! }
+//!
+//! // Run the example
+//! example().unwrap();
+//! ```
+//!
+//! Note: In a real application environment (not testing), you would use it like this:
+//!
+//! ```rust,no_run
+//! # use std::sync::atomic::{AtomicBool, Ordering};
+//! # use oxitty::{Tui, AtomicState, StateSnapshot, OxittyResult};
+//! # #[derive(Debug)]
+//! # struct AppState {
+//! #     running: AtomicBool,
+//! # }
+//! # #[derive(Debug, Clone)]
+//! # struct AppSnapshot {
+//! #     running: bool,
+//! # }
+//! # impl StateSnapshot for AppSnapshot {
+//! #     fn should_quit(&self) -> bool { !self.running }
+//! # }
+//! # impl AtomicState for AppState {
+//! #     type Snapshot = AppSnapshot;
+//! #     fn snapshot(&self) -> Self::Snapshot {
+//! #         AppSnapshot {
+//! #             running: self.running.load(Ordering::Acquire),
+//! #         }
+//! #     }
+//! #     fn quit(&self) { self.running.store(false, Ordering::Release); }
+//! #     fn is_running(&self) -> bool { self.running.load(Ordering::Acquire) }
+//! # }
+//! fn real_usage() -> OxittyResult<()> {
+//!     let app_state = AppState {
+//!         running: AtomicBool::new(true),
+//!     };
+//!
+//!     let mut tui = Tui::new(app_state)?;
+//!     tui.render(|snapshot, area, frame| {
+//!         // Render UI using current state snapshot
+//!     })?;
+//!
+//!     Ok(())
+//! }
+//! ```
 
 use std::io::{self, Stdout};
 
@@ -25,16 +152,40 @@ use crate::{
     state::AtomicState,
 };
 
-/// Terminal user interface manager
+/// Terminal user interface manager that coordinates rendering and state management.
+///
+/// Manages terminal setup, rendering, cleanup, and maintains thread-safe state access.
+/// Provides themed styling capabilities and safe terminal restoration on drop.
+///
+/// # Type Parameters
+///
+/// * `S` - The atomic state type that must implement `AtomicState`
 pub struct Tui<S: AtomicState> {
-    /// Terminal instance for rendering
+    /// Terminal instance for rendering operations
     terminal: Terminal<CrosstermBackend<Stdout>>,
-    /// Application state
+    /// Thread-safe application state
     state: S,
 }
 
 impl<S: AtomicState> Tui<S> {
-    /// Creates a new TUI instance
+    /// Creates a new TUI instance with the provided atomic state.
+    ///
+    /// # Arguments
+    ///
+    /// * `state` - The initial atomic state
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Tui)` - Successfully initialized TUI instance
+    /// * `Err` - Terminal initialization failed (not a TTY, capabilities unavailable)
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Not running in a real terminal
+    /// - Terminal capabilities unavailable
+    /// - Raw mode cannot be enabled
+    /// - Alternate screen/mouse capture setup fails
     pub fn new(state: S) -> OxittyResult<Self> {
         // Check if we're in a real terminal
         if !Self::is_real_terminal() {
@@ -50,7 +201,9 @@ impl<S: AtomicState> Tui<S> {
         Ok(Self { terminal, state })
     }
 
-    /// Check if we're in a real terminal
+    /// Checks if running in a real terminal environment.
+    ///
+    /// Verifies both TTY status and terminal environment variables.
     fn is_real_terminal() -> bool {
         // Check if stdout is a tty
         if !atty::is(atty::Stream::Stdout) {
@@ -65,7 +218,12 @@ impl<S: AtomicState> Tui<S> {
         }
     }
 
-    /// Sets up the terminal for TUI operation
+    /// Configures terminal for TUI operation.
+    ///
+    /// Enables:
+    /// - Raw mode
+    /// - Alternate screen
+    /// - Mouse capture
     fn setup_terminal() -> OxittyResult<Terminal<CrosstermBackend<Stdout>>> {
         let mut stdout = io::stdout();
 
@@ -95,7 +253,12 @@ impl<S: AtomicState> Tui<S> {
         })
     }
 
-    /// Restores terminal to original state
+    /// Restores terminal to original state.
+    ///
+    /// Disables:
+    /// - Raw mode
+    /// - Alternate screen
+    /// - Mouse capture
     fn restore_terminal(&mut self) -> OxittyResult<()> {
         terminal::disable_raw_mode().map_err(|e| {
             OxittyError::terminal(
@@ -127,7 +290,17 @@ impl<S: AtomicState> Tui<S> {
         })?)
     }
 
-    /// Renders a frame using the provided render function
+    /// Renders a frame using the provided render function.
+    ///
+    /// Takes an atomic snapshot of the current state for consistent rendering.
+    ///
+    /// # Arguments
+    ///
+    /// * `render_fn` - Function to handle frame rendering with current state
+    ///
+    /// # Type Parameters
+    ///
+    /// * `F` - Render function type that accepts snapshot, area, and frame
     pub fn render<F>(&mut self, render_fn: F) -> OxittyResult<()>
     where
         F: FnOnce(&S::Snapshot, Rect, &mut ratatui::Frame<'_>),
@@ -150,17 +323,17 @@ impl<S: AtomicState> Tui<S> {
             })?)
     }
 
-    /// Returns a reference to the terminal
+    /// Returns reference to underlying terminal instance.
     pub fn terminal(&self) -> &Terminal<CrosstermBackend<Stdout>> {
         &self.terminal
     }
 
-    /// Returns a reference to the state
+    /// Returns reference to current application state.
     pub fn state(&self) -> &S {
         &self.state
     }
 
-    /// Returns the terminal size
+    /// Returns current terminal dimensions.
     pub fn size(&self) -> OxittyResult<Size> {
         Ok(self.terminal.size().map_err(|e| {
             OxittyError::terminal(
@@ -171,7 +344,7 @@ impl<S: AtomicState> Tui<S> {
         })?)
     }
 
-    /// Flushes the terminal
+    /// Flushes pending changes to terminal.
     pub fn flush(&mut self) -> OxittyResult<()> {
         Ok(self.terminal.flush().map_err(|e| {
             OxittyError::terminal(
@@ -182,77 +355,81 @@ impl<S: AtomicState> Tui<S> {
         })?)
     }
 
-    /// Returns the default theme style
+    /// Returns default theme style (primary text on base background).
     pub fn style() -> Style {
         Style::default()
             .fg(theme::text::PRIMARY.into())
             .bg(theme::background::BASE.into())
     }
 
-    /// Returns a style with primary text color
+    /// Returns primary text style.
     pub fn primary() -> Style {
         Style::default()
             .fg(theme::text::PRIMARY.into())
             .bg(theme::background::BASE.into())
     }
 
-    /// Returns a style with secondary text color
+    /// Returns secondary text style.
     pub fn secondary() -> Style {
         Style::default()
             .fg(theme::text::SECONDARY.into())
             .bg(theme::background::BASE.into())
     }
 
-    /// Returns a style for error messages
+    /// Returns error message style.
     pub fn error() -> Style {
         Style::default()
             .fg(theme::status::ERROR.into())
             .bg(theme::background::BASE.into())
     }
 
-    /// Returns a style for warning messages
+    /// Returns warning message style.
     pub fn warning() -> Style {
         Style::default()
             .fg(theme::status::WARNING.into())
             .bg(theme::background::BASE.into())
     }
 
-    /// Returns a style for info messages
+    /// Returns info message style.
     pub fn info() -> Style {
         Style::default()
             .fg(theme::status::INFO.into())
             .bg(theme::background::BASE.into())
     }
 
-    /// Returns a style for success messages
+    /// Returns success message style.
     pub fn success() -> Style {
         Style::default()
             .fg(theme::status::SUCCESS.into())
             .bg(theme::background::BASE.into())
     }
 
-    /// Returns a style for UI borders
+    /// Returns border element style.
     pub fn border() -> Style {
         Style::default()
             .fg(theme::background::ELEVATION_3.into())
             .bg(theme::background::BASE.into())
     }
 
-    /// Returns a style for focused elements
+    /// Returns focused element style.
     pub fn focus() -> Style {
         Style::default()
             .fg(theme::void::PURPLE.into())
             .bg(theme::background::BASE.into())
     }
 
-    /// Returns a style for void elements
+    /// Returns void element style.
     pub fn void() -> Style {
         Style::default()
             .fg(theme::void::GREEN.into())
             .bg(theme::background::BASE.into())
     }
 
-    /// Creates a themed block with the given title
+    /// Creates a themed block with given title.
+    ///
+    /// # Arguments
+    ///
+    /// * `title` - Block title text
     pub fn block(title: impl Into<String>) -> Block<'static> {
         Block::default()
             .title(Line::from(title.into()))

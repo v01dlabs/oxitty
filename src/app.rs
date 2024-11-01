@@ -2,10 +2,66 @@
 //!
 //! This module provides the primary application infrastructure, coordinating between
 //! the event system, state management, and TUI rendering.
-
-use std::{future::Future, sync::Arc, time::Duration};
+//!
+//! # Example
+//!
+//! ```rust
+//! use std::sync::atomic::{AtomicBool, Ordering};
+//! use std::time::Duration;
+//! use oxitty::{App, AtomicState, StateSnapshot, OxittyResult};
+//!
+//! // Define application state
+//! #[derive(Debug, Clone)]
+//! struct AppSnapshot {
+//!     running: bool,
+//! }
+//!
+//! impl StateSnapshot for AppSnapshot {
+//!     fn should_quit(&self) -> bool {
+//!         !self.running
+//!     }
+//! }
+//!
+//! #[derive(Debug)]
+//! struct AppState {
+//!     running: AtomicBool,
+//! }
+//!
+//! impl AtomicState for AppState {
+//!     type Snapshot = AppSnapshot;
+//!
+//!     fn snapshot(&self) -> Self::Snapshot {
+//!         AppSnapshot {
+//!             running: self.running.load(Ordering::Acquire),
+//!         }
+//!     }
+//!
+//!     fn quit(&self) {
+//!         self.running.store(false, Ordering::Release);
+//!     }
+//!
+//!     fn is_running(&self) -> bool {
+//!         self.running.load(Ordering::Acquire)
+//!     }
+//! }
+//!
+//! fn main() -> OxittyResult<()> {
+//!     std::env::set_var("TERM", "dumb"); // Set up test environment
+//!
+//!     let state = AppState {
+//!         running: AtomicBool::new(true),
+//!     };
+//!
+//!     // Create app with 50ms tick rate - this will fail in test environment
+//!     let app = App::new(state, Duration::from_millis(50));
+//!     assert!(app.is_err(), "App creation should fail in test environment");
+//!
+//!     Ok(())
+//! }
+//! ```
 
 use smol::{future::FutureExt, Task};
+use std::{future::Future, sync::Arc, time::Duration};
 
 use crate::{
     error::OxittyResult,
@@ -15,6 +71,65 @@ use crate::{
 };
 
 /// Core application struct managing all components
+///
+/// This struct coordinates between the terminal interface, event system,
+/// and application state. It provides a safe, efficient way to build
+/// terminal-based user interfaces.
+///
+/// # Example
+///
+/// ```rust
+/// use std::sync::atomic::{AtomicBool, Ordering};
+/// use std::time::Duration;
+/// use oxitty::{App, AtomicState, StateSnapshot, OxittyResult};
+///
+/// #[derive(Debug, Clone)]
+/// struct AppSnapshot {
+///     running: bool,
+/// }
+///
+/// impl StateSnapshot for AppSnapshot {
+///     fn should_quit(&self) -> bool {
+///         !self.running
+///     }
+/// }
+///
+/// #[derive(Debug)]
+/// struct AppState {
+///     running: AtomicBool,
+/// }
+///
+/// impl AtomicState for AppState {
+///     type Snapshot = AppSnapshot;
+///
+///     fn snapshot(&self) -> Self::Snapshot {
+///         AppSnapshot {
+///             running: self.running.load(Ordering::Acquire),
+///         }
+///     }
+///
+///     fn quit(&self) {
+///         self.running.store(false, Ordering::Release);
+///     }
+///
+///     fn is_running(&self) -> bool {
+///         self.running.load(Ordering::Acquire)
+///     }
+/// }
+///
+/// fn main() -> OxittyResult<()> {
+///     std::env::set_var("TERM", "dumb");
+///
+///     let state = AppState {
+///         running: AtomicBool::new(true),
+///     };
+///
+///     let app = App::new(state, Duration::from_millis(50));
+///     assert!(app.is_err(), "App creation should fail in test environment");
+///
+///     Ok(())
+/// }
+/// ```
 pub struct App<S: AtomicState> {
     /// Terminal interface manager
     tui: Tui<S>,
@@ -28,6 +143,58 @@ pub struct App<S: AtomicState> {
 
 impl<S: AtomicState + 'static> App<S> {
     /// Creates a new application instance
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use std::sync::atomic::{AtomicBool, Ordering};
+    /// use std::time::Duration;
+    /// use oxitty::{App, AtomicState, StateSnapshot, OxittyResult};
+    ///
+    /// #[derive(Debug, Clone)]
+    /// struct AppSnapshot {
+    ///     running: bool,
+    /// }
+    ///
+    /// impl StateSnapshot for AppSnapshot {
+    ///     fn should_quit(&self) -> bool {
+    ///         !self.running
+    ///     }
+    /// }
+    ///
+    /// #[derive(Debug)]
+    /// struct AppState {
+    ///     running: AtomicBool,
+    /// }
+    ///
+    /// impl AtomicState for AppState {
+    ///     type Snapshot = AppSnapshot;
+    ///     fn snapshot(&self) -> Self::Snapshot {
+    ///         AppSnapshot {
+    ///             running: self.running.load(Ordering::Acquire),
+    ///         }
+    ///     }
+    ///     fn quit(&self) {
+    ///         self.running.store(false, Ordering::Release);
+    ///     }
+    ///     fn is_running(&self) -> bool {
+    ///         self.running.load(Ordering::Acquire)
+    ///     }
+    /// }
+    ///
+    /// fn main() -> OxittyResult<()> {
+    ///     std::env::set_var("TERM", "dumb");
+    ///
+    ///     let state = AppState {
+    ///         running: AtomicBool::new(true),
+    ///     };
+    ///
+    ///     let app = App::new(state, Duration::from_millis(50));
+    ///     assert!(app.is_err(), "App creation should fail in test environment");
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn new(state: S, tick_rate: Duration) -> OxittyResult<Self> {
         let tui = Tui::new(state)?;
         let events = EventHandler::new();
@@ -41,6 +208,62 @@ impl<S: AtomicState + 'static> App<S> {
     }
 
     /// Spawns a background task
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use std::sync::atomic::{AtomicBool, Ordering};
+    /// use std::time::Duration;
+    /// use oxitty::{App, AtomicState, StateSnapshot, OxittyResult};
+    ///
+    /// #[derive(Debug, Clone)]
+    /// struct AppSnapshot {
+    ///     running: bool,
+    /// }
+    ///
+    /// impl StateSnapshot for AppSnapshot {
+    ///     fn should_quit(&self) -> bool {
+    ///         !self.running
+    ///     }
+    /// }
+    ///
+    /// #[derive(Debug)]
+    /// struct AppState {
+    ///     running: AtomicBool,
+    /// }
+    ///
+    /// impl AtomicState for AppState {
+    ///     type Snapshot = AppSnapshot;
+    ///     fn snapshot(&self) -> Self::Snapshot {
+    ///         AppSnapshot {
+    ///             running: self.running.load(Ordering::Acquire),
+    ///         }
+    ///     }
+    ///     fn quit(&self) {
+    ///         self.running.store(false, Ordering::Release);
+    ///     }
+    ///     fn is_running(&self) -> bool {
+    ///         self.running.load(Ordering::Acquire)
+    ///     }
+    /// }
+    ///
+    /// async fn background_task() -> OxittyResult<()> {
+    ///     Ok(())
+    /// }
+    ///
+    /// fn main() -> OxittyResult<()> {
+    ///     std::env::set_var("TERM", "dumb");
+    ///
+    ///     let state = AppState {
+    ///         running: AtomicBool::new(true),
+    ///     };
+    ///
+    ///     let app = App::new(state, Duration::from_millis(50));
+    ///     assert!(app.is_err(), "App creation should fail in test environment");
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn spawn<F>(&mut self, future: F) -> OxittyResult<()>
     where
         F: Future<Output = OxittyResult<()>> + Send + 'static,
@@ -51,6 +274,68 @@ impl<S: AtomicState + 'static> App<S> {
     }
 
     /// Runs the application event loop
+    ///
+    /// Runs the application event loop
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use std::sync::atomic::{AtomicBool, Ordering};
+    /// use std::time::Duration;
+    /// use oxitty::{App, AtomicState, StateSnapshot, OxittyResult};
+    ///
+    /// #[derive(Debug, Clone)]
+    /// struct AppSnapshot {
+    ///     running: bool,
+    /// }
+    ///
+    /// impl StateSnapshot for AppSnapshot {
+    ///     fn should_quit(&self) -> bool {
+    ///         !self.running
+    ///     }
+    /// }
+    ///
+    /// #[derive(Debug)]
+    /// struct AppState {
+    ///     running: AtomicBool,
+    /// }
+    ///
+    /// impl AtomicState for AppState {
+    ///     type Snapshot = AppSnapshot;
+    ///     fn snapshot(&self) -> Self::Snapshot {
+    ///         AppSnapshot {
+    ///             running: self.running.load(Ordering::Acquire),
+    ///         }
+    ///     }
+    ///     fn quit(&self) {
+    ///         self.running.store(false, Ordering::Release);
+    ///     }
+    ///     fn is_running(&self) -> bool {
+    ///         self.running.load(Ordering::Acquire)
+    ///     }
+    /// }
+    ///
+    /// fn main() -> OxittyResult<()> {
+    ///     std::env::set_var("TERM", "dumb");
+    ///
+    ///     let state = AppState {
+    ///         running: AtomicBool::new(true),
+    ///     };
+    ///
+    ///     // Try to create app - should fail in test environment
+    ///     let app = App::new(state, Duration::from_millis(50));
+    ///     assert!(app.is_err(), "App creation should fail in test environment");
+    ///
+    ///     // If we had a real terminal, we would run like this:
+    ///     // smol::block_on(async {
+    ///     //     app.run(|snapshot, area, frame| {
+    ///     //         // Rendering logic here
+    ///     //     }).await
+    ///     // })?;
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
     pub async fn run<F>(&mut self, render_fn: F) -> OxittyResult<()>
     where
         F: Fn(&S::Snapshot, ratatui::layout::Rect, &mut ratatui::Frame<'_>) + Send + 'static,
@@ -93,7 +378,16 @@ impl<S: AtomicState + 'static> App<S> {
         Ok(())
     }
 
-    /// Cleanup background tasks
+    /// Cleanup background tasks with timeout
+    ///
+    /// This method attempts to gracefully shut down all background tasks.
+    /// It will wait up to 1 second for each task to complete before moving on.
+    ///
+    /// # Implementation Details
+    ///
+    /// - Takes ownership of the tasks vector to ensure all tasks are handled
+    /// - Uses a 1 second timeout for each task
+    /// - Logs any errors during cleanup but continues with shutdown
     async fn cleanup_tasks(&mut self) {
         let tasks = std::mem::take(&mut self.tasks);
         for task in tasks {
@@ -111,17 +405,29 @@ impl<S: AtomicState + 'static> App<S> {
         }
     }
 
-    /// Returns a reference to the TUI
+    /// Returns a reference to the terminal interface manager.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the [`Tui`] instance.
     pub fn tui(&self) -> &Tui<S> {
         &self.tui
     }
 
-    /// Returns a reference to the event handler
+    /// Returns a reference to the event handler.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the [`EventHandler`] instance.
     pub fn events(&self) -> &EventHandler {
         &self.events
     }
 
-    /// Returns the current tick rate
+    /// Returns the current tick rate.
+    ///
+    /// # Returns
+    ///
+    /// The [`Duration`] between event checks.
     pub fn tick_rate(&self) -> Duration {
         self.tick_rate
     }
@@ -132,7 +438,6 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    // Test state implementation
     #[derive(Debug, Clone)]
     struct TestSnapshot {
         running: bool,
