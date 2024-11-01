@@ -18,4 +18,15 @@ ratatui = "0.29.0"
 smol = "2.0.2"
 
 [dev-dependencies]
+criterion = "0.5.1"
+dhat = "0.3.3"
 pretty_assertions = "1.4"
+
+[[bench]]
+name = "memory_profile_test"
+harness = false
+
+[[bench]]
+name = "performance_test"
+harness = false
+
