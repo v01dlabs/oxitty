@@ -13,6 +13,9 @@ use crossterm::{
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Rect, Size},
+    prelude::Line,
+    style::Style,
+    widgets::Block,
     Terminal,
 };
 
@@ -39,7 +42,8 @@ impl<S: AtomicState> Tui<S> {
                 "terminal check",
                 (0, 0),
                 "Not a real terminal or terminal capabilities not available".to_string(),
-            ).into());
+            )
+            .into());
         }
 
         let terminal = Self::setup_terminal()?;
@@ -65,29 +69,30 @@ impl<S: AtomicState> Tui<S> {
     fn setup_terminal() -> OxittyResult<Terminal<CrosstermBackend<Stdout>>> {
         let mut stdout = io::stdout();
 
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture).map_err(|e|
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture).map_err(|e| {
             OxittyError::terminal(
                 "terminal setup",
                 (0, 0),
                 format!("Failed to setup terminal: {}", e),
             )
-        )?;
+        })?;
 
-        terminal::enable_raw_mode().map_err(|e|
+        terminal::enable_raw_mode().map_err(|e| {
             OxittyError::terminal(
                 "terminal setup",
                 (0, 0),
                 format!("Failed to enable raw mode: {}", e),
             )
-        )?;
+        })?;
 
-        Terminal::new(CrosstermBackend::new(stdout)).map_err(|e|
+        Terminal::new(CrosstermBackend::new(stdout)).map_err(|e| {
             OxittyError::terminal(
                 "terminal setup",
                 (0, 0),
                 format!("Failed to create terminal: {}", e),
-            ).into()
-        )
+            )
+            .into()
+        })
     }
 
     /// Restores terminal to original state
@@ -176,6 +181,84 @@ impl<S: AtomicState> Tui<S> {
             )
         })?)
     }
+
+    /// Returns the default theme style
+    pub fn style() -> Style {
+        Style::default()
+            .fg(theme::text::PRIMARY.into())
+            .bg(theme::background::BASE.into())
+    }
+
+    /// Returns a style with primary text color
+    pub fn primary() -> Style {
+        Style::default()
+            .fg(theme::text::PRIMARY.into())
+            .bg(theme::background::BASE.into())
+    }
+
+    /// Returns a style with secondary text color
+    pub fn secondary() -> Style {
+        Style::default()
+            .fg(theme::text::SECONDARY.into())
+            .bg(theme::background::BASE.into())
+    }
+
+    /// Returns a style for error messages
+    pub fn error() -> Style {
+        Style::default()
+            .fg(theme::status::ERROR.into())
+            .bg(theme::background::BASE.into())
+    }
+
+    /// Returns a style for warning messages
+    pub fn warning() -> Style {
+        Style::default()
+            .fg(theme::status::WARNING.into())
+            .bg(theme::background::BASE.into())
+    }
+
+    /// Returns a style for info messages
+    pub fn info() -> Style {
+        Style::default()
+            .fg(theme::status::INFO.into())
+            .bg(theme::background::BASE.into())
+    }
+
+    /// Returns a style for success messages
+    pub fn success() -> Style {
+        Style::default()
+            .fg(theme::status::SUCCESS.into())
+            .bg(theme::background::BASE.into())
+    }
+
+    /// Returns a style for UI borders
+    pub fn border() -> Style {
+        Style::default()
+            .fg(theme::background::ELEVATION_3.into())
+            .bg(theme::background::BASE.into())
+    }
+
+    /// Returns a style for focused elements
+    pub fn focus() -> Style {
+        Style::default()
+            .fg(theme::void::PURPLE.into())
+            .bg(theme::background::BASE.into())
+    }
+
+    /// Returns a style for void elements
+    pub fn void() -> Style {
+        Style::default()
+            .fg(theme::void::GREEN.into())
+            .bg(theme::background::BASE.into())
+    }
+
+    /// Creates a themed block with the given title
+    pub fn block(title: impl Into<String>) -> Block<'static> {
+        Block::default()
+            .title(Line::from(title.into()))
+            .style(Self::primary())
+            .border_style(Self::border())
+    }
 }
 
 impl<S: AtomicState> Drop for Tui<S> {
@@ -246,13 +329,17 @@ mod tests {
         };
 
         let result = Tui::new(state);
-        assert!(result.is_err(), "Expected TUI creation to fail in mock environment");
+        assert!(
+            result.is_err(),
+            "Expected TUI creation to fail in mock environment"
+        );
 
         if let Err(e) = result {
             let err_msg = e.to_string().to_lowercase();
             assert!(
                 err_msg.contains("terminal") || err_msg.contains("tty"),
-                "Expected terminal-related error, got: {}", err_msg
+                "Expected terminal-related error, got: {}",
+                err_msg
             );
         }
     }
@@ -266,14 +353,55 @@ mod tests {
         };
 
         let result = Tui::new(state);
-        assert!(result.is_err(), "Expected TUI creation to fail in mock environment");
+        assert!(
+            result.is_err(),
+            "Expected TUI creation to fail in mock environment"
+        );
 
         if let Err(e) = result {
             let err_msg = e.to_string().to_lowercase();
             assert!(
                 err_msg.contains("terminal") || err_msg.contains("tty"),
-                "Expected terminal-related error, got: {}", err_msg
+                "Expected terminal-related error, got: {}",
+                err_msg
             );
         }
+    }
+
+    #[test]
+    fn test_theme_styles() {
+        // Test primary style
+        let style = Tui::<TestState>::primary();
+        assert_eq!(style.fg, Some(theme::text::PRIMARY.into()));
+        assert_eq!(style.bg, Some(theme::background::BASE.into()));
+
+        // Test error style
+        let style = Tui::<TestState>::error();
+        assert_eq!(style.fg, Some(theme::status::ERROR.into()));
+        assert_eq!(style.bg, Some(theme::background::BASE.into()));
+
+        // Test border style
+        let style = Tui::<TestState>::border();
+        assert_eq!(style.fg, Some(theme::background::ELEVATION_3.into()));
+        assert_eq!(style.bg, Some(theme::background::BASE.into()));
+    }
+
+    #[test]
+    fn test_themed_block() {
+        let title = "Test";
+        let themed_block = Tui::<TestState>::block(title);
+
+        // Create styles we expect the block to be created with
+        let expected_style = Tui::<TestState>::primary();
+        let expected_border = Tui::<TestState>::border();
+
+        // Create a reference block with same styles to compare
+        let reference_block = Block::default()
+            .style(expected_style)
+            .border_style(expected_border)
+            .title(Line::from(title));
+
+        // Assert our themed block matches the reference
+        assert_eq!(themed_block, reference_block);
     }
 }

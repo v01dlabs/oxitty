@@ -3,16 +3,9 @@
 //! This module provides the primary application infrastructure, coordinating between
 //! the event system, state management, and TUI rendering.
 
-use std::{
-    future::Future,
-    sync::Arc,
-    time::Duration,
-};
+use std::{future::Future, sync::Arc, time::Duration};
 
-use smol::{
-    future::FutureExt,
-    Task,
-};
+use smol::{future::FutureExt, Task};
 
 use crate::{
     error::OxittyResult,
@@ -105,11 +98,12 @@ impl<S: AtomicState + 'static> App<S> {
         let tasks = std::mem::take(&mut self.tasks);
         for task in tasks {
             // Attempt to join task with timeout
-            match task.or(async {
-                smol::Timer::after(Duration::from_secs(1)).await;
-                Ok(())
-            })
-            .await
+            match task
+                .or(async {
+                    smol::Timer::after(Duration::from_secs(1)).await;
+                    Ok(())
+                })
+                .await
             {
                 Ok(_) => {}
                 Err(e) => eprintln!("Task cleanup error: {}", e),
@@ -182,7 +176,10 @@ mod tests {
         };
 
         let app_result = App::new(state, Duration::from_millis(50));
-        assert!(app_result.is_err(), "App creation should fail in test environment");
+        assert!(
+            app_result.is_err(),
+            "App creation should fail in test environment"
+        );
     }
 
     #[test]
@@ -194,9 +191,7 @@ mod tests {
         };
 
         if let Ok(mut app) = App::new(state, Duration::from_millis(50)) {
-            let spawn_result = app.spawn(async {
-                Ok(())
-            });
+            let spawn_result = app.spawn(async { Ok(()) });
             assert!(spawn_result.is_ok());
             assert_eq!(app.tasks.len(), 1);
         }

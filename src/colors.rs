@@ -348,8 +348,12 @@ mod tests {
 
         let dark_purple = void::purple_variant(20.0);
         let (_h, _s, l) = dark_purple.to_hsl();
-        assert!(approx_eq(l, 20.0, EPSILON),
-            "Lightness {} not within {} of target 20.0", l, EPSILON);
+        assert!(
+            approx_eq(l, 20.0, EPSILON),
+            "Lightness {} not within {} of target 20.0",
+            l,
+            EPSILON
+        );
     }
 
     #[test]
@@ -362,11 +366,20 @@ mod tests {
         let (h1, s1, _) = warning.to_hsl();
         let (h2, _s2, l2) = intense.to_hsl();
 
-        assert!(approx_eq(h1, h2, EPSILON),
-            "Hue changed from {} to {}, diff > {}", h1, h2, EPSILON);
+        assert!(
+            approx_eq(h1, h2, EPSILON),
+            "Hue changed from {} to {}, diff > {}",
+            h1,
+            h2,
+            EPSILON
+        );
         assert!(s1 > 0.0, "Source saturation should be positive");
-        assert!(approx_eq(l2, 70.0, EPSILON),
-            "Lightness {} not within {} of target 70.0", l2, EPSILON);
+        assert!(
+            approx_eq(l2, 70.0, EPSILON),
+            "Lightness {} not within {} of target 70.0",
+            l2,
+            EPSILON
+        );
     }
 
     #[test]
@@ -585,9 +598,12 @@ mod theme_tests {
         let dark_purple = void::purple_variant(20.0);
         let (_h, _s, l) = dark_purple.to_hsl();
 
-        assert!((l - 20.0).abs() < EPSILON,
+        assert!(
+            (l - 20.0).abs() < EPSILON,
             "Lightness too far from target: {} vs 20.0 (diff: {})",
-            l, (l - 20.0).abs());
+            l,
+            (l - 20.0).abs()
+        );
     }
 
     #[test]
