@@ -22,6 +22,7 @@ criterion = "0.5.1"
 dhat = "0.3.3"
 pretty_assertions = "1.4"
 rand = "0.8.5"
+rayon = "1.10.0"
 
 [[bench]]
 name = "memory_profile_test"
@@ -31,9 +32,9 @@ harness = false
 name = "ordering_test"
 harness = false
 
-# [[bench]]
-# name = "parallelism_test"
-# harness = false
+[[bench]]
+name = "parallelism_test"
+harness = false
 
 [[bench]]
 name = "performance_test"

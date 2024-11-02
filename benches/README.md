@@ -68,6 +68,8 @@ Total program memory profile:
 [dev-dependencies]
 criterion = "0.5.1"
 dhat = "0.3.3"
+rand = "0.8.5"
+rayon = "1.10.0"
 ```
 
 ### Commands
