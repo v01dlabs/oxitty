@@ -6,17 +6,39 @@ on:
   pull_request:
     branches: [ "main" ]
 
-env:
-  CARGO_TERM_COLOR: always
+permissions:
+  contents: read
 
 jobs:
   build:
-
+    name: Build and test
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Restore cache
+      uses: Swatinem/rust-cache@v2
+
     - name: Build
       run: cargo build --verbose
+
     - name: Run tests
       run: cargo test --verbose
+
+    - name: Send Discord Notification
+      if: always()
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      uses: sarisia/actions-status-discord@v1
+      with:
+        webhook: ${{ env.DISCORD_WEBHOOK }}
+        status: ${{ job.status }}
+        title: "Rust Build Status"
+        description: |
+          Repository: ${{ github.repository }}
+          Branch: ${{ github.ref_name }}
+          Event: ${{ github.event_name }}
