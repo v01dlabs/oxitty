@@ -29,16 +29,26 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
 
-    - name: Send Discord Notification
-      if: always()
-      env:
-        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+    - name: Success Notification
+      if: success()
       uses: sarisia/actions-status-discord@v1
       with:
-        webhook: ${{ env.DISCORD_WEBHOOK }}
-        status: ${{ job.status }}
-        title: "Rust Build Status"
+        webhook: ${{ secrets.DISCORD_WEBHOOK }}
+        title: "✅ Build Succeeded"
         description: |
           Repository: ${{ github.repository }}
           Branch: ${{ github.ref_name }}
-          Event: ${{ github.event_name }}
+          Commit: ${{ github.sha }}
+        color: 0x00E49A
+
+    - name: Failure Notification
+      if: failure()
+      uses: sarisia/actions-status-discord@v1
+      with:
+        webhook: ${{ secrets.DISCORD_WEBHOOK }}
+        title: "❌ Build Failed"
+        description: |
+          Repository: ${{ github.repository }}
+          Branch: ${{ github.ref_name }}
+          Commit: ${{ github.sha }}
+        color: 0xFF2E5F
