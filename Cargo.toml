@@ -28,6 +28,14 @@ name = "memory_profile_test"
 harness = false
 
 [[bench]]
+name = "ordering_test"
+harness = false
+
+# [[bench]]
+# name = "parallelism_test"
+# harness = false
+
+[[bench]]
 name = "performance_test"
 harness = false
 
